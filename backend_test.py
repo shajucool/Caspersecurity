@@ -97,6 +97,16 @@ class TelegramBotAPITester:
                            "ban_count", "promote_count", "demote_count", "fun_count", "groups_count"]
         )
 
+    def test_health_endpoint(self):
+        """Test GET /api/health returns healthy status with bot_running and mongo_connected fields"""
+        return self.run_test(
+            "Health Check Endpoint",
+            "GET",
+            "health",
+            expected_status=200,
+            expected_fields=["status", "bot_running", "mongo_connected", "uptime_seconds"]
+        )
+
     def test_bot_commands(self):
         """Test GET /api/bot/commands returns all command categories"""
         success, data = self.run_test(
@@ -188,13 +198,16 @@ def main():
     # Test 1: Root endpoint
     tester.test_root_endpoint()
     
-    # Test 2: Bot status
+    # Test 2: Health endpoint (new for Railway deployment)
+    tester.test_health_endpoint()
+    
+    # Test 3: Bot status
     tester.test_bot_status()
     
-    # Test 3: Bot stats
+    # Test 4: Bot stats
     tester.test_bot_stats()
     
-    # Test 4: Bot commands
+    # Test 5: Bot commands
     success, commands_data = tester.test_bot_commands()
     
     # Validate command structure

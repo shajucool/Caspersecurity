@@ -13,10 +13,14 @@ from bot import setup_handlers, bot_stats
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+# MongoDB (optional — bot works without it, stats just won't persist)
+mongo_url = os.environ.get("MONGO_URL")
+db = None
+mongo_client = None
+if mongo_url:
+    mongo_client = AsyncIOMotorClient(mongo_url)
+    db_name = os.environ.get("DB_NAME", "casper_bot")
+    db = mongo_client[db_name]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -46,16 +50,21 @@ async def startup():
         bot_running = True
         logging.info("Telegram bot started successfully!")
 
-        # Restore saved stats
-        saved = await db.bot_stats.find_one({"id": "global"}, {"_id": 0})
-        if saved:
-            for k, v in saved.items():
-                if k == "id":
-                    continue
-                if k == "groups_seen":
-                    bot_stats["groups_seen"] = set(v)
-                elif k in bot_stats:
-                    bot_stats[k] = v
+        # Restore saved stats from MongoDB (if available)
+        if db is not None:
+            try:
+                saved = await db.bot_stats.find_one({"id": "global"}, {"_id": 0})
+                if saved:
+                    for k, v in saved.items():
+                        if k == "id":
+                            continue
+                        if k == "groups_seen":
+                            bot_stats["groups_seen"] = set(v)
+                        elif k in bot_stats:
+                            bot_stats[k] = v
+                logging.info("Stats restored from MongoDB.")
+            except Exception as e:
+                logging.warning(f"Could not restore stats from MongoDB: {e}")
     except Exception as e:
         logging.error(f"Failed to start Telegram bot: {e}")
         bot_running = False
@@ -65,16 +74,17 @@ async def startup():
 async def shutdown():
     global bot_application, bot_running
 
-    # Persist stats
-    try:
-        stats_doc = {k: v for k, v in bot_stats.items() if k != "groups_seen"}
-        stats_doc["groups_seen"] = list(bot_stats["groups_seen"])
-        stats_doc["id"] = "global"
-        await db.bot_stats.update_one(
-            {"id": "global"}, {"$set": stats_doc}, upsert=True
-        )
-    except Exception:
-        pass
+    # Persist stats to MongoDB (if available)
+    if db is not None:
+        try:
+            stats_doc = {k: v for k, v in bot_stats.items() if k != "groups_seen"}
+            stats_doc["groups_seen"] = list(bot_stats["groups_seen"])
+            stats_doc["id"] = "global"
+            await db.bot_stats.update_one(
+                {"id": "global"}, {"$set": stats_doc}, upsert=True
+            )
+        except Exception:
+            pass
 
     if bot_application:
         try:
@@ -85,13 +95,29 @@ async def shutdown():
             pass
         bot_running = False
 
-    client.close()
+    if mongo_client:
+        mongo_client.close()
 
 
 # ── API routes ──────────────────────────────────────────────────
 @api_router.get("/")
 async def root():
     return {"message": "Casper Moderation Bot API"}
+
+
+@api_router.get("/health")
+async def health_check():
+    """Health check for Railway / deployment monitoring."""
+    return {
+        "status": "healthy",
+        "bot_running": bot_running,
+        "uptime_seconds": int(
+            (datetime.now(timezone.utc) - bot_start_time).total_seconds()
+        )
+        if bot_start_time
+        else 0,
+        "mongo_connected": db is not None,
+    }
 
 
 @api_router.get("/bot/status")
