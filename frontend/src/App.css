@@ -1,34 +1,309 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* ── Root ──────────────────────────────────────── */
+.app-root {
+  min-height: 100vh;
+  background: #0a0a0a;
+  color: #ededed;
+  position: relative;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.scanline-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  opacity: 0.03;
+  background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+  background-repeat: repeat;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.container {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
 }
 
-.App-link {
-    color: #61dafb;
+/* ── Header ───────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3rem;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-icon {
+  color: #00ff9d;
+}
+
+.header-title {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #ededed;
+}
+
+.accent {
+  color: #00ff9d;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-dot {
+  height: 10px;
+  width: 10px;
+  border-radius: 50%;
+}
+
+.status-dot.online {
+  background: #00ff9d;
+  box-shadow: 0 0 10px #00ff9d, 0 0 20px rgba(0, 255, 157, 0.3);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.status-dot.offline {
+  background: #ff3b30;
+  box-shadow: 0 0 10px rgba(255, 59, 48, 0.4);
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 10px #00ff9d, 0 0 20px rgba(0, 255, 157, 0.3);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 6px #00ff9d, 0 0 12px rgba(0, 255, 157, 0.15);
+  }
+}
+
+.status-badge {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  border-radius: 4px;
+}
+
+.badge-online {
+  background: rgba(0, 255, 157, 0.15) !important;
+  color: #00ff9d !important;
+  border: 1px solid rgba(0, 255, 157, 0.3) !important;
+}
+
+.badge-offline {
+  background: rgba(255, 59, 48, 0.15) !important;
+  color: #ff3b30 !important;
+  border: 1px solid rgba(255, 59, 48, 0.3) !important;
+}
+
+/* ── Stats Grid ──────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 3.5rem;
+}
+
+@media (max-width: 640px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stat-card {
+  background: #121212;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s ease, transform 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: rgba(0, 255, 157, 0.35);
+  transform: translateY(-2px);
+}
+
+.stat-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(0, 255, 157, 0) 0%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.stat-card:hover::after {
+  opacity: 1;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(0, 255, 157, 0.06) 0%,
+    transparent 100%
+  );
+}
+
+.stat-icon {
+  color: #00ff9d;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #a1a1aa;
+}
+
+.stat-value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #ededed;
+}
+
+/* ── Commands Section ────────────────────────── */
+.commands-section {
+  margin-bottom: 3rem;
+}
+
+.section-title {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  margin-bottom: 1.25rem;
+}
+
+.accordion-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.accordion-item {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-top: none !important;
+}
+
+.accordion-trigger {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #ededed;
+  padding: 1rem 0;
+  transition: color 0.2s ease;
+}
+
+.accordion-trigger:hover {
+  color: #00ff9d;
+}
+
+.accordion-trigger[data-state="open"] {
+  color: #00ff9d;
+}
+
+.trigger-content {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.trigger-icon {
+  color: #00ff9d;
+  flex-shrink: 0;
+}
+
+.trigger-note {
+  font-size: 0.65rem;
+  color: #666;
+  font-weight: 400;
+  margin-left: auto;
+  padding-right: 0.5rem;
+}
+
+.accordion-content {
+  padding-bottom: 0.75rem;
+}
+
+/* ── Command Row ─────────────────────────────── */
+.cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0 0.5rem 2rem;
+  transition: background 0.15s ease;
+  border-radius: 4px;
+}
+
+.cmd-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cmd-name {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  color: #00ff9d;
+  background: rgba(0, 255, 157, 0.08);
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cmd-desc {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+
+.cmd-badge {
+  font-size: 0.55rem;
+  padding: 0.1rem 0.4rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Footer ──────────────────────────────────── */
+.footer {
+  text-align: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  color: #555;
+  letter-spacing: 0.05em;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.footer-dot {
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  background: #00ff9d;
+  box-shadow: 0 0 6px #00ff9d;
+  animation: pulse-glow 2s ease-in-out infinite;
 }
