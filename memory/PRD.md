@@ -1,0 +1,38 @@
+# Casper Moderation Bot - PRD
+
+## Problem Statement
+Build a Telegram moderation bot with 30+ commands (mute, unmute, kick, ban, admin, fun, owner mention, help) with owner protection for @casperthe6ix (ID: 7109454163). Auto-detect target language, per-group last speaker tracking, custom mute durations. Minimal web status dashboard. Deployable on Railway/Fly.io.
+
+## Architecture
+- **Backend**: FastAPI + python-telegram-bot v22.6 (async polling)
+- **Frontend**: React + Tailwind + shadcn/ui (terminal-themed status page)
+- **Database**: MongoDB (stats persistence)
+- **Bot Token**: Stored in .env
+
+## Core Requirements
+- Owner immune to all punishments
+- Target detection: reply > @mention > last speaker
+- Language auto-detection via langdetect
+- Custom mute durations (m, h, d, w, mo, y)
+- /vio = permanent mute
+- /help sends DM in groups, inline in private
+
+## What's Been Implemented (2026-03-16)
+- All 30+ command handlers (mute x10, unmute x2, kick x3, ban x3, promote x2, demote x2, fun x6, owner x8, help)
+- Owner protection with multilingual messages (13 languages)
+- Per-group last speaker tracking + user cache
+- Language detection via langdetect
+- FastAPI status API (/api/bot/status, /api/bot/stats, /api/bot/commands)
+- Terminal-aesthetic React dashboard (dark theme, JetBrains Mono, neon green accent)
+- Deployment files (Dockerfile, railway.toml, fly.toml)
+- Stats persistence in MongoDB
+
+## User Personas
+- **Owner** (@casperthe6ix): Full control, immune to all punishments
+- **Group Members**: Use commands, subject to moderation
+
+## Prioritized Backlog
+- P0: Complete (all commands + web status)
+- P1: Webhook mode for production (instead of polling)
+- P2: Admin-only command restriction option
+- P2: Web dashboard with logs/history
