@@ -31,8 +31,18 @@ Build a Telegram moderation bot with 30+ commands (mute, unmute, kick, ban, admi
 - **Owner** (@casperthe6ix): Full control, immune to all punishments
 - **Group Members**: Use commands, subject to moderation
 
+## Railway Deployment Readiness (2026-03-16)
+- MongoDB made optional (bot works without it, stats just don't persist)
+- /api/health endpoint added for Railway health checks
+- Dockerfile uses $PORT env var (Railway sets this)
+- .dockerignore excludes .env from Docker image
+- Slim requirements.deploy.txt (9 packages vs 126 in full freeze)
+- railway.toml with healthcheck config
+- DEPLOY.md with step-by-step Railway instructions
+- No hardcoded values — all config via environment variables
+
 ## Prioritized Backlog
-- P0: Complete (all commands + web status)
+- P0: Complete (all commands + web status + Railway deploy)
 - P1: Webhook mode for production (instead of polling)
 - P2: Admin-only command restriction option
 - P2: Web dashboard with logs/history
