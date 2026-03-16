@@ -1,0 +1,119 @@
+{
+  "project_name": "Telegram Moderation Bot Status",
+  "theme": "dark",
+  "design_philosophy": {
+    "archetype": "The Operator (Cyber-Industrial)",
+    "core_vibe": "Functional, High-Precision, Minimalist, Terminal-Inspired",
+    "principles": [
+      "Data over Decoration: Every pixel must serve information clarity.",
+      "Terminal Aesthetic: Use monospace fonts for hierarchy, not just code.",
+      "Signal vs. Noise: High contrast for status/alerts, low contrast for structure.",
+      "Motion as Feedback: Blink, pulse, and slide to mimic active machinery."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "heading": "JetBrains Mono, monospace",
+      "body": "Inter, sans-serif",
+      "code": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+      "h2": "text-2xl md:text-3xl font-semibold tracking-tight",
+      "h3": "text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm text-muted-foreground"
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": "#0a0a0a",
+      "foreground": "#ededed",
+      "card": "#121212",
+      "card_foreground": "#ffffff",
+      "primary": "#00ff9d",
+      "primary_foreground": "#000000",
+      "secondary": "#27272a",
+      "secondary_foreground": "#ffffff",
+      "muted": "#27272a",
+      "muted_foreground": "#a1a1aa",
+      "accent": "#00ff9d",
+      "accent_foreground": "#000000",
+      "destructive": "#ff3b30",
+      "destructive_foreground": "#ffffff",
+      "border": "#27272a",
+      "input": "#27272a",
+      "ring": "#00ff9d"
+    },
+    "gradients": {
+      "hero_glow": "radial-gradient(circle at 50% 0%, rgba(0, 255, 157, 0.15) 0%, transparent 70%)",
+      "scanline": "linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2))"
+    }
+  },
+  "layout": {
+    "grid_system": "Bento Grid",
+    "container": "max-w-5xl mx-auto px-6 py-12",
+    "spacing": {
+      "section_gap": "gap-12",
+      "component_gap": "gap-6",
+      "internal_padding": "p-6"
+    }
+  },
+  "components": {
+    "StatusIndicator": {
+      "description": "A pulsing dot indicating bot health.",
+      "styles": "h-3 w-3 rounded-full bg-primary animate-pulse shadow-[0_0_10px_#00ff9d]"
+    },
+    "StatsCard": {
+      "description": "Minimalist card for single metric.",
+      "styles": "bg-card border border-border/50 hover:border-primary/50 transition-colors p-6 rounded-lg flex flex-col items-start gap-2 relative overflow-hidden group"
+    },
+    "CommandList": {
+      "description": "Accordion-style list of available commands.",
+      "styles": "w-full border-t border-border"
+    },
+    "TerminalWindow": {
+      "description": "Container for the main dashboard content.",
+      "styles": "bg-[#0a0a0a] border border-border rounded-lg shadow-2xl overflow-hidden font-mono"
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid rgba(255, 255, 255, 0.1)",
+    "shadows": "0 0 40px -10px rgba(0, 255, 157, 0.1)",
+    "effects": [
+      "Scanlines overlay (pointer-events-none fixed inset-0 z-50 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')])",
+      "Glow on hover for cards"
+    ]
+  },
+  "motion": {
+    "reduced_motion": "respect-prefers-reduced-motion",
+    "types": {
+      "blink": "animate-pulse (for cursor/status)",
+      "slide": "transition-all duration-300 ease-in-out",
+      "hover_lift": "hover:-translate-y-1 transition-transform duration-200"
+    }
+  },
+  "image_urls": {
+    "hero_background": "https://images.unsplash.com/photo-1762279389042-9439bfb6c155?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdyZWVuJTIwZGF0YSUyMHZpc3VhbGl6YXRpb24lMjBkYXJrJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzM2ODA0MTF8MA&ixlib=rb-4.1.0&q=85",
+    "placeholder_logo": "https://placehold.co/100x100/00ff9d/000000?text=BOT"
+  },
+  "instructions_to_main_agent": [
+    "1. SETUP: Install 'lucide-react' for icons. Ensure Tailwind is configured for 'class' dark mode.",
+    "2. FONT: Import 'JetBrains Mono' and 'Inter' from Google Fonts in index.css.",
+    "3. LAYOUT: Create a single page dashboard. Use a 'max-w-5xl' container centered horizontally.",
+    "4. HEADER: Left: 'BOT_NAME' in JetBrains Mono (Bold). Right: 'ONLINE' badge with pulsing green dot.",
+    "5. HERO: Use the Bento Grid layout for stats (Uptime, Users, Groups, Latency). Use the provided hero_background as a subtle subtle overlay or section background with low opacity.",
+    "6. COMMANDS: Create a 'System Commands' section. Use Shadcn Accordion. Each item header is the command (e.g., '/ban'). Content is the description and usage usage syntax.",
+    "7. FOOTER: Minimal. 'System Online. v1.0.0'.",
+    "8. MICRO-INTERACTIONS: Add hover effects to all cards (border color change to primary). Add a copy-to-clipboard button for command syntax.",
+    "9. DATA-TESTID: Add 'data-testid' to the status indicator, each command item, and stat cards.",
+    "10. THEME: Force Dark Mode by default. Do not add a toggle unless necessary (user asked for dark theme)."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do not use gradients for text.",
+    "Do not center align the app container (.App { text-align: center }).",
+    "Use 'sonner' for toasts.",
+    "Use 'lucide-react' for icons.",
+    "Add 'data-testid' to all interactive elements."
+  ]
+}
