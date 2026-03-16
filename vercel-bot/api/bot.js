@@ -1,17 +1,16 @@
-const { Telegraf } = require("telegraf");
-const { MongoClient } = require("mongodb");
+import { Telegraf } from "telegraf";
+import { MongoClient } from "mongodb";
 
 // ═══════════════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════════════
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const bot = BOT_TOKEN ? new Telegraf(BOT_TOKEN) : null;
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const OWNER_ID = 7109454163;
 const OWNER_USERNAME = "casperthe6ix";
 
 // ═══════════════════════════════════════════════════════════════
-//  MONGODB (cached connection for warm serverless starts)
+//  MONGODB (cached connection for warm serverless invocations)
 // ═══════════════════════════════════════════════════════════════
 let cachedDb = null;
 
@@ -21,7 +20,6 @@ async function getDb() {
   try {
     const client = await MongoClient.connect(process.env.MONGO_URL);
     cachedDb = client.db(process.env.DB_NAME || "casper_bot");
-    // Ensure indexes (idempotent)
     await Promise.all([
       cachedDb.collection("last_speakers").createIndex({ chat_id: 1 }, { unique: true }).catch(() => {}),
       cachedDb.collection("user_cache").createIndex({ username: 1 }, { unique: true }).catch(() => {}),
@@ -35,7 +33,7 @@ async function getDb() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  OWNER PROTECTION MESSAGES
+//  OWNER PROTECTION MESSAGES (13 languages)
 // ═══════════════════════════════════════════════════════════════
 const MUTE_PROTECTION = {
   en: "You don't tell your dad to be quiet. \u{1F92B}",
@@ -128,7 +126,7 @@ const CAP_REPLIES = {
 const OWNER_COMMANDS = ["papa", "pere", "boss", "patron", "chef", "owner", "roi", "king"];
 
 // ═══════════════════════════════════════════════════════════════
-//  PERMISSIONS OBJECTS
+//  PERMISSION OBJECTS
 // ═══════════════════════════════════════════════════════════════
 const FULL_MUTE = {
   can_send_messages: false,
@@ -165,7 +163,7 @@ const FULL_UNMUTE = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  LANGUAGE DETECTION (zero-dependency, script + keyword based)
+//  LANGUAGE DETECTION (zero-dependency, script + keyword)
 // ═══════════════════════════════════════════════════════════════
 function detectLanguage(text) {
   if (!text || text.length < 3) return "en";
@@ -185,7 +183,7 @@ function detectLanguage(text) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  HELPER FUNCTIONS
+//  HELPERS
 // ═══════════════════════════════════════════════════════════════
 function getCmd(ctx) {
   const text = ctx.message?.text || "";
@@ -242,14 +240,12 @@ async function resolveTarget(ctx) {
   // 2. @username in args
   const { username } = parseArgs(msg.text);
   if (username) {
-    // Direct owner username check
     if (username === OWNER_USERNAME.toLowerCase()) {
       try {
         const member = await ctx.telegram.getChatMember(chatId, OWNER_ID);
         return member.user;
       } catch {}
     }
-    // Check MongoDB user cache
     const db = await getDb();
     if (db) {
       try {
@@ -289,456 +285,432 @@ async function incrementStats(fields) {
   const inc = {};
   for (const f of fields) inc[f] = 1;
   try {
-    await db.collection("bot_stats").updateOne(
-      { id: "global" },
-      { $inc: inc },
-      { upsert: true }
-    );
+    await db.collection("bot_stats").updateOne({ id: "global" }, { $inc: inc }, { upsert: true });
   } catch {}
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  MESSAGE TRACKING MIDDLEWARE
 // ═══════════════════════════════════════════════════════════════
-if (bot) {
-  bot.use(async (ctx, next) => {
-    // Only track group messages
-    if (!ctx.message || !ctx.from || !ctx.chat || ctx.chat.type === "private") {
-      return next();
-    }
+bot.use(async (ctx, next) => {
+  if (!ctx.message || !ctx.from || !ctx.chat || ctx.chat.type === "private") {
+    return next();
+  }
 
-    const chatId = ctx.chat.id;
-    const user = ctx.from;
-    const text = ctx.message.text || "";
+  const chatId = ctx.chat.id;
+  const user = ctx.from;
+  const text = ctx.message.text || "";
 
-    // Fire-and-forget DB operations (don't block the handler)
-    const db = await getDb();
-    if (db) {
-      const ops = [];
+  const db = await getDb();
+  if (db) {
+    const ops = [];
 
-      // Update last speaker (non-command messages only)
-      if (!text.startsWith("/")) {
-        ops.push(
-          db.collection("last_speakers").updateOne(
-            { chat_id: chatId },
-            { $set: { chat_id: chatId, user_id: user.id, updated_at: new Date() } },
-            { upsert: true }
-          )
-        );
-      }
-
-      // Cache user info
-      if (user.username) {
-        ops.push(
-          db.collection("user_cache").updateOne(
-            { username: user.username.toLowerCase() },
-            { $set: { username: user.username.toLowerCase(), user_id: user.id, first_name: user.first_name } },
-            { upsert: true }
-          )
-        );
-      }
-
-      // Track messages for language detection (non-command)
-      if (text && !text.startsWith("/")) {
-        ops.push(
-          db.collection("user_messages").updateOne(
-            { chat_id: chatId, user_id: user.id },
-            {
-              $push: { messages: { $each: [text], $slice: -10 } },
-              $set: { chat_id: chatId, user_id: user.id },
-            },
-            { upsert: true }
-          )
-        );
-      }
-
-      // Track group
+    if (!text.startsWith("/")) {
       ops.push(
-        db.collection("bot_stats").updateOne(
-          { id: "global" },
-          { $addToSet: { groups_seen: chatId } },
+        db.collection("last_speakers").updateOne(
+          { chat_id: chatId },
+          { $set: { chat_id: chatId, user_id: user.id, updated_at: new Date() } },
           { upsert: true }
         )
       );
-
-      await Promise.all(ops).catch(() => {});
     }
 
-    return next();
-  });
-
-  // ═══════════════════════════════════════════════════════════════
-  //  COMMAND HANDLERS
-  // ═══════════════════════════════════════════════════════════════
-
-  // ─── MUTE ────────────────────────────────────────────────────
-  async function muteHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "mute_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. Reply to someone, tag them, or let someone speak first. \u{1F3AF}");
-    }
-
-    if (isOwner(target)) {
-      const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
-      return ctx.reply(MUTE_PROTECTION[lang] || MUTE_PROTECTION.en);
-    }
-
-    const { durationStr } = parseArgs(ctx.message.text);
-    let untilDate;
-    if (cmd === "vio") {
-      untilDate = Math.floor(Date.now() / 1000) + 400 * 86400; // permanent
-    } else if (durationStr) {
-      const secs = parseDuration(durationStr);
-      untilDate = Math.floor(Date.now() / 1000) + (secs || 3600);
-    } else {
-      untilDate = Math.floor(Date.now() / 1000) + 3600; // default 1h
-    }
-
-    try {
-      await ctx.telegram.restrictChatMember(ctx.chat.id, target.id, {
-        permissions: FULL_MUTE,
-        until_date: untilDate,
-      });
-      const name = target.first_name || target.username || "User";
-      const reply = MUTE_REPLIES[cmd] || "Muted. \u{1F910}";
-      return ctx.reply(`${name}, ${reply}`);
-    } catch (e) {
-      console.error("Mute failed:", e.message);
-      return ctx.reply("Couldn't mute. Make sure I'm admin with restrict permissions! \u26A0\uFE0F");
-    }
-  }
-
-  // ─── UNMUTE ──────────────────────────────────────────────────
-  async function unmuteHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "unmute_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. \u{1F3AF}");
-    }
-
-    try {
-      await ctx.telegram.restrictChatMember(ctx.chat.id, target.id, {
-        permissions: FULL_UNMUTE,
-      });
-      const name = target.first_name || target.username || "User";
-      const reply = UNMUTE_REPLIES[cmd] || "Unmuted. \u{1F5E3}\uFE0F";
-      return ctx.reply(`${name}, ${reply}`);
-    } catch (e) {
-      console.error("Unmute failed:", e.message);
-      return ctx.reply("Couldn't unmute. Am I admin? \u26A0\uFE0F");
-    }
-  }
-
-  // ─── KICK ────────────────────────────────────────────────────
-  async function kickHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "kick_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. \u{1F3AF}");
-    }
-
-    if (isOwner(target)) {
-      const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
-      return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
-    }
-
-    try {
-      await ctx.telegram.banChatMember(ctx.chat.id, target.id);
-      await ctx.telegram.unbanChatMember(ctx.chat.id, target.id);
-      const name = target.first_name || target.username || "User";
-      const reply = KICK_REPLIES[cmd] || "Kicked. \u{1F6AA}";
-      return ctx.reply(`${name}, ${reply}`);
-    } catch (e) {
-      console.error("Kick failed:", e.message);
-      return ctx.reply("Couldn't kick. Am I admin? \u26A0\uFE0F");
-    }
-  }
-
-  // ─── BAN ─────────────────────────────────────────────────────
-  async function banHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "ban_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. \u{1F3AF}");
-    }
-
-    if (isOwner(target)) {
-      const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
-      return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
-    }
-
-    try {
-      await ctx.telegram.banChatMember(ctx.chat.id, target.id);
-      const name = target.first_name || target.username || "User";
-      const reply = BAN_REPLIES[cmd] || "Banned. \u{1F528}";
-      return ctx.reply(`${name}, ${reply}`);
-    } catch (e) {
-      console.error("Ban failed:", e.message);
-      return ctx.reply("Couldn't ban. Am I admin? \u26A0\uFE0F");
-    }
-  }
-
-  // ─── PROMOTE ─────────────────────────────────────────────────
-  async function promoteHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "promote_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. \u{1F3AF}");
-    }
-
-    try {
-      await ctx.telegram.promoteChatMember(ctx.chat.id, target.id, {
-        can_manage_chat: true,
-        can_delete_messages: true,
-        can_manage_video_chats: true,
-        can_restrict_members: true,
-        can_promote_members: false,
-        can_change_info: true,
-        can_invite_users: true,
-        can_pin_messages: true,
-      });
-      try {
-        await ctx.telegram.setChatAdministratorCustomTitle(ctx.chat.id, target.id, "Casper's VIP");
-      } catch {}
-      const name = target.first_name || target.username || "User";
-      const reply = PROMOTE_REPLIES[cmd] || "Promoted. \u{1F451}";
-      return ctx.reply(`${name}, ${reply}`);
-    } catch (e) {
-      console.error("Promote failed:", e.message);
-      return ctx.reply("Couldn't promote. Am I admin with promote rights? \u26A0\uFE0F");
-    }
-  }
-
-  // ─── DEMOTE ──────────────────────────────────────────────────
-  async function demoteHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "demote_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. \u{1F3AF}");
-    }
-
-    if (isOwner(target)) {
-      const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
-      return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
-    }
-
-    try {
-      await ctx.telegram.promoteChatMember(ctx.chat.id, target.id, {
-        can_manage_chat: false,
-        can_delete_messages: false,
-        can_manage_video_chats: false,
-        can_restrict_members: false,
-        can_promote_members: false,
-        can_change_info: false,
-        can_invite_users: false,
-        can_pin_messages: false,
-      });
-      const name = target.first_name || target.username || "User";
-      const reply = DEMOTE_REPLIES[cmd] || "Demoted. \u{1F4C9}";
-      return ctx.reply(`${name}, ${reply}`);
-    } catch (e) {
-      console.error("Demote failed:", e.message);
-      return ctx.reply("Couldn't demote. Am I admin? \u26A0\uFE0F");
-    }
-  }
-
-  // ─── OWNER MENTION ───────────────────────────────────────────
-  async function ownerHandler(ctx) {
-    incrementStats(["total_commands"]).catch(() => {});
-    return ctx.reply(`The owner, The boss, Our leader is @${OWNER_USERNAME} \u{1F451}\u{1F525}`);
-  }
-
-  // ─── FUN COMMANDS ────────────────────────────────────────────
-  async function funHandler(ctx) {
-    if (ctx.chat.type === "private") return;
-
-    const cmd = getCmd(ctx);
-    incrementStats(["total_commands", "fun_count"]).catch(() => {});
-
-    const target = await resolveTarget(ctx);
-    if (!target) {
-      return ctx.reply("Couldn't find a target. \u{1F3AF}");
-    }
-
-    if (isOwner(target)) {
-      const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
-      return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
-    }
-
-    const name = target.first_name || target.username || "User";
-    let reply;
-
-    if (cmd === "cap") {
-      const lang = await getUserLanguage(ctx.chat.id, target.id);
-      reply = lang === "fr" ? CAP_REPLIES.fr : CAP_REPLIES.en;
-    } else {
-      reply = FUN_REPLIES[cmd] || "lol \u{1F602}";
-    }
-
-    return ctx.reply(`${name}, ${reply}`);
-  }
-
-  // ─── HELP ────────────────────────────────────────────────────
-  async function helpHandler(ctx) {
-    incrementStats(["total_commands"]).catch(() => {});
-
-    const helpText =
-      "<b>\u{1F916} CASPER MOD BOT \u2014 COMMANDS</b>\n\n" +
-      "<b>\u{1F910} MUTE COMMANDS</b> <i>(default 1h, add time: 10m, 2h, 3d, 1w, 2mo, 1y)</i>\n" +
-      "/shutup \u2014 Shut your stinking mouth\n" +
-      "/shush \u2014 Stop Yappin\n" +
-      "/ftg \u2014 Ferme ta gueule big\n" +
-      "/bec \u2014 Aie bec!\n" +
-      "/stopbarking \u2014 Stop barking, Bitch\n" +
-      "/artdejapper \u2014 Arr\u00eate d'aboyer pti chiwawa\n" +
-      "/sybau \u2014 Shut your bitch AHHHH up\n" +
-      "/goofy \u2014 You're gay, can't talk faggot\n" +
-      "/keh \u2014 Ferme ta jgole senti ptite sharmouta\n" +
-      "/vio \u2014 <b>PERMANENT</b> mute\n\n" +
-      "<b>\u{1F5E3}\uFE0F UNMUTE COMMANDS</b>\n" +
-      "/talk \u2014 Talk respectfully n*gga\n" +
-      "/parle \u2014 Parle bien bruv\n\n" +
-      "<b>\u{1F6AA} KICK COMMANDS</b>\n" +
-      "/sort \u2014 Trace ta route bouzin senti\n" +
-      "/getout \u2014 Go take a bath\n" +
-      "/decawlis \u2014 Ta yeule pu la marde\n\n" +
-      "<b>\u{1F528} BAN COMMANDS</b>\n" +
-      "/ntm \u2014 Vazi niquer ta marrain\n" +
-      "/bouge \u2014 Ayo bouge tu parle trop\n" +
-      "/ciao \u2014 Ciao per sempre\n\n" +
-      "<b>\u{1F451} ADMIN COMMANDS</b>\n" +
-      "/levelup \u2014 Promote to Casper's VIP\n" +
-      "/debout \u2014 Promote to Casper's VIP\n" +
-      "/assistoi \u2014 Demote (mauvais chien)\n" +
-      "/leveldown \u2014 Remove VIP status\n\n" +
-      "<b>\u{1F602} FUN COMMANDS</b> <i>(no punishment)</i>\n" +
-      "/pussy \u2014 You're acting scared\n" +
-      "/shifta \u2014 Go do your shift\n" +
-      "/cap \u2014 Stop the cap / T'es un mytho\n" +
-      "/mgd \u2014 MTL Groups Destroyed\n" +
-      "/fu \u2014 ...\n" +
-      "/gay \u2014 You're a faggot\n\n" +
-      "<b>\u{1F525} OWNER MENTION</b>\n" +
-      "/papa /pere /boss /patron /chef /owner /roi /king\n\n" +
-      "<b>\u2753 HELP</b>\n" +
-      "/help \u2014 Show this list\n\n" +
-      "<i>Target: reply to a message, tag @username, or bot uses the last speaker.</i>";
-
-    if (ctx.chat.type !== "private") {
-      try {
-        await ctx.telegram.sendMessage(ctx.from.id, helpText, { parse_mode: "HTML" });
-        return ctx.reply("Check your DMs! \u{1F4EC}");
-      } catch {
-        const me = await ctx.telegram.getMe();
-        return ctx.reply(`Start a chat with me first: @${me.username} then try /help again \u{1F4AC}`);
-      }
-    } else {
-      return ctx.reply(helpText, { parse_mode: "HTML" });
-    }
-  }
-
-  // ─── START (private chat) ────────────────────────────────────
-  bot.command("start", async (ctx) => {
-    if (ctx.chat.type === "private") {
-      return ctx.reply(
-        "\u{1F916} <b>CASPER MOD BOT</b>\n\n" +
-        "Add me to a group and make me admin to start moderating.\n\n" +
-        "Use /help to see all commands.",
-        { parse_mode: "HTML" }
+    if (user.username) {
+      ops.push(
+        db.collection("user_cache").updateOne(
+          { username: user.username.toLowerCase() },
+          { $set: { username: user.username.toLowerCase(), user_id: user.id, first_name: user.first_name } },
+          { upsert: true }
+        )
       );
     }
-  });
 
-  // ═══════════════════════════════════════════════════════════════
-  //  REGISTER ALL COMMAND HANDLERS
-  // ═══════════════════════════════════════════════════════════════
+    if (text && !text.startsWith("/")) {
+      ops.push(
+        db.collection("user_messages").updateOne(
+          { chat_id: chatId, user_id: user.id },
+          {
+            $push: { messages: { $each: [text], $slice: -10 } },
+            $set: { chat_id: chatId, user_id: user.id },
+          },
+          { upsert: true }
+        )
+      );
+    }
 
-  // Mute commands
-  for (const cmd of Object.keys(MUTE_REPLIES)) {
-    bot.command(cmd, muteHandler);
+    ops.push(
+      db.collection("bot_stats").updateOne(
+        { id: "global" },
+        { $addToSet: { groups_seen: chatId } },
+        { upsert: true }
+      )
+    );
+
+    await Promise.all(ops).catch(() => {});
   }
 
-  // Unmute commands
-  for (const cmd of Object.keys(UNMUTE_REPLIES)) {
-    bot.command(cmd, unmuteHandler);
+  return next();
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  COMMAND HANDLERS
+// ═══════════════════════════════════════════════════════════════
+
+// ─── MUTE ──────────────────────────────────────────────────────
+async function muteHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "mute_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. Reply to someone, tag them, or let someone speak first. \u{1F3AF}");
   }
 
-  // Kick commands
-  for (const cmd of Object.keys(KICK_REPLIES)) {
-    bot.command(cmd, kickHandler);
+  if (isOwner(target)) {
+    const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
+    return ctx.reply(MUTE_PROTECTION[lang] || MUTE_PROTECTION.en);
   }
 
-  // Ban commands
-  for (const cmd of Object.keys(BAN_REPLIES)) {
-    bot.command(cmd, banHandler);
+  const { durationStr } = parseArgs(ctx.message.text);
+  let untilDate;
+  if (cmd === "vio") {
+    untilDate = Math.floor(Date.now() / 1000) + 400 * 86400;
+  } else if (durationStr) {
+    const secs = parseDuration(durationStr);
+    untilDate = Math.floor(Date.now() / 1000) + (secs || 3600);
+  } else {
+    untilDate = Math.floor(Date.now() / 1000) + 3600;
   }
 
-  // Promote commands
-  for (const cmd of Object.keys(PROMOTE_REPLIES)) {
-    bot.command(cmd, promoteHandler);
+  try {
+    await ctx.telegram.restrictChatMember(ctx.chat.id, target.id, {
+      permissions: FULL_MUTE,
+      until_date: untilDate,
+    });
+    const name = target.first_name || target.username || "User";
+    const reply = MUTE_REPLIES[cmd] || "Muted. \u{1F910}";
+    return ctx.reply(`${name}, ${reply}`);
+  } catch (e) {
+    console.error("Mute failed:", e.message);
+    return ctx.reply("Couldn't mute. Make sure I'm admin with restrict permissions! \u26A0\uFE0F");
   }
-
-  // Demote commands
-  for (const cmd of Object.keys(DEMOTE_REPLIES)) {
-    bot.command(cmd, demoteHandler);
-  }
-
-  // Owner mention commands
-  for (const cmd of OWNER_COMMANDS) {
-    bot.command(cmd, ownerHandler);
-  }
-
-  // Fun commands
-  for (const cmd of Object.keys(FUN_REPLIES)) {
-    bot.command(cmd, funHandler);
-  }
-  bot.command("cap", funHandler);
-
-  // Help
-  bot.command("help", helpHandler);
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  VERCEL SERVERLESS HANDLER (webhook endpoint)
-// ═══════════════════════════════════════════════════════════════
-module.exports = async (req, res) => {
-  if (!bot) {
-    return res.status(500).json({ error: "BOT_TOKEN environment variable is not set" });
+// ─── UNMUTE ────────────────────────────────────────────────────
+async function unmuteHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "unmute_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. \u{1F3AF}");
   }
 
-  // Verify webhook secret (optional extra security)
-  if (process.env.WEBHOOK_SECRET) {
-    const incoming = req.headers["x-telegram-bot-api-secret-token"];
-    if (incoming !== process.env.WEBHOOK_SECRET) {
-      return res.status(401).json({ error: "Invalid secret token" });
+  try {
+    await ctx.telegram.restrictChatMember(ctx.chat.id, target.id, {
+      permissions: FULL_UNMUTE,
+    });
+    const name = target.first_name || target.username || "User";
+    const reply = UNMUTE_REPLIES[cmd] || "Unmuted. \u{1F5E3}\uFE0F";
+    return ctx.reply(`${name}, ${reply}`);
+  } catch (e) {
+    console.error("Unmute failed:", e.message);
+    return ctx.reply("Couldn't unmute. Am I admin? \u26A0\uFE0F");
+  }
+}
+
+// ─── KICK ──────────────────────────────────────────────────────
+async function kickHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "kick_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. \u{1F3AF}");
+  }
+
+  if (isOwner(target)) {
+    const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
+    return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
+  }
+
+  try {
+    await ctx.telegram.banChatMember(ctx.chat.id, target.id);
+    await ctx.telegram.unbanChatMember(ctx.chat.id, target.id);
+    const name = target.first_name || target.username || "User";
+    const reply = KICK_REPLIES[cmd] || "Kicked. \u{1F6AA}";
+    return ctx.reply(`${name}, ${reply}`);
+  } catch (e) {
+    console.error("Kick failed:", e.message);
+    return ctx.reply("Couldn't kick. Am I admin? \u26A0\uFE0F");
+  }
+}
+
+// ─── BAN ───────────────────────────────────────────────────────
+async function banHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "ban_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. \u{1F3AF}");
+  }
+
+  if (isOwner(target)) {
+    const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
+    return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
+  }
+
+  try {
+    await ctx.telegram.banChatMember(ctx.chat.id, target.id);
+    const name = target.first_name || target.username || "User";
+    const reply = BAN_REPLIES[cmd] || "Banned. \u{1F528}";
+    return ctx.reply(`${name}, ${reply}`);
+  } catch (e) {
+    console.error("Ban failed:", e.message);
+    return ctx.reply("Couldn't ban. Am I admin? \u26A0\uFE0F");
+  }
+}
+
+// ─── PROMOTE ───────────────────────────────────────────────────
+async function promoteHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "promote_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. \u{1F3AF}");
+  }
+
+  try {
+    await ctx.telegram.promoteChatMember(ctx.chat.id, target.id, {
+      can_manage_chat: true,
+      can_delete_messages: true,
+      can_manage_video_chats: true,
+      can_restrict_members: true,
+      can_promote_members: false,
+      can_change_info: true,
+      can_invite_users: true,
+      can_pin_messages: true,
+    });
+    try {
+      await ctx.telegram.setChatAdministratorCustomTitle(ctx.chat.id, target.id, "Casper's VIP");
+    } catch {}
+    const name = target.first_name || target.username || "User";
+    const reply = PROMOTE_REPLIES[cmd] || "Promoted. \u{1F451}";
+    return ctx.reply(`${name}, ${reply}`);
+  } catch (e) {
+    console.error("Promote failed:", e.message);
+    return ctx.reply("Couldn't promote. Am I admin with promote rights? \u26A0\uFE0F");
+  }
+}
+
+// ─── DEMOTE ────────────────────────────────────────────────────
+async function demoteHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "demote_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. \u{1F3AF}");
+  }
+
+  if (isOwner(target)) {
+    const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
+    return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
+  }
+
+  try {
+    await ctx.telegram.promoteChatMember(ctx.chat.id, target.id, {
+      can_manage_chat: false,
+      can_delete_messages: false,
+      can_manage_video_chats: false,
+      can_restrict_members: false,
+      can_promote_members: false,
+      can_change_info: false,
+      can_invite_users: false,
+      can_pin_messages: false,
+    });
+    const name = target.first_name || target.username || "User";
+    const reply = DEMOTE_REPLIES[cmd] || "Demoted. \u{1F4C9}";
+    return ctx.reply(`${name}, ${reply}`);
+  } catch (e) {
+    console.error("Demote failed:", e.message);
+    return ctx.reply("Couldn't demote. Am I admin? \u26A0\uFE0F");
+  }
+}
+
+// ─── OWNER MENTION ─────────────────────────────────────────────
+async function ownerHandler(ctx) {
+  incrementStats(["total_commands"]).catch(() => {});
+  return ctx.reply(`The owner, The boss, Our leader is @${OWNER_USERNAME} \u{1F451}\u{1F525}`);
+}
+
+// ─── FUN ───────────────────────────────────────────────────────
+async function funHandler(ctx) {
+  if (ctx.chat.type === "private") return;
+
+  const cmd = getCmd(ctx);
+  incrementStats(["total_commands", "fun_count"]).catch(() => {});
+
+  const target = await resolveTarget(ctx);
+  if (!target) {
+    return ctx.reply("Couldn't find a target. \u{1F3AF}");
+  }
+
+  if (isOwner(target)) {
+    const lang = await getUserLanguage(ctx.chat.id, ctx.from.id);
+    return ctx.reply(KICK_FUN_PROTECTION[lang] || KICK_FUN_PROTECTION.en);
+  }
+
+  const name = target.first_name || target.username || "User";
+  let reply;
+
+  if (cmd === "cap") {
+    const lang = await getUserLanguage(ctx.chat.id, target.id);
+    reply = lang === "fr" ? CAP_REPLIES.fr : CAP_REPLIES.en;
+  } else {
+    reply = FUN_REPLIES[cmd] || "lol \u{1F602}";
+  }
+
+  return ctx.reply(`${name}, ${reply}`);
+}
+
+// ─── HELP ──────────────────────────────────────────────────────
+async function helpHandler(ctx) {
+  incrementStats(["total_commands"]).catch(() => {});
+
+  const helpText =
+    "<b>\u{1F916} CASPER MOD BOT \u2014 COMMANDS</b>\n\n" +
+    "<b>\u{1F910} MUTE COMMANDS</b> <i>(default 1h, add time: 10m, 2h, 3d, 1w, 2mo, 1y)</i>\n" +
+    "/shutup \u2014 Shut your stinking mouth\n" +
+    "/shush \u2014 Stop Yappin\n" +
+    "/ftg \u2014 Ferme ta gueule big\n" +
+    "/bec \u2014 Aie bec!\n" +
+    "/stopbarking \u2014 Stop barking, Bitch\n" +
+    "/artdejapper \u2014 Arr\u00eate d'aboyer pti chiwawa\n" +
+    "/sybau \u2014 Shut your bitch AHHHH up\n" +
+    "/goofy \u2014 You're gay, can't talk faggot\n" +
+    "/keh \u2014 Ferme ta jgole senti ptite sharmouta\n" +
+    "/vio \u2014 <b>PERMANENT</b> mute\n\n" +
+    "<b>\u{1F5E3}\uFE0F UNMUTE COMMANDS</b>\n" +
+    "/talk \u2014 Talk respectfully n*gga\n" +
+    "/parle \u2014 Parle bien bruv\n\n" +
+    "<b>\u{1F6AA} KICK COMMANDS</b>\n" +
+    "/sort \u2014 Trace ta route bouzin senti\n" +
+    "/getout \u2014 Go take a bath\n" +
+    "/decawlis \u2014 Ta yeule pu la marde\n\n" +
+    "<b>\u{1F528} BAN COMMANDS</b>\n" +
+    "/ntm \u2014 Vazi niquer ta marrain\n" +
+    "/bouge \u2014 Ayo bouge tu parle trop\n" +
+    "/ciao \u2014 Ciao per sempre\n\n" +
+    "<b>\u{1F451} ADMIN COMMANDS</b>\n" +
+    "/levelup \u2014 Promote to Casper's VIP\n" +
+    "/debout \u2014 Promote to Casper's VIP\n" +
+    "/assistoi \u2014 Demote (mauvais chien)\n" +
+    "/leveldown \u2014 Remove VIP status\n\n" +
+    "<b>\u{1F602} FUN COMMANDS</b> <i>(no punishment)</i>\n" +
+    "/pussy \u2014 You're acting scared\n" +
+    "/shifta \u2014 Go do your shift\n" +
+    "/cap \u2014 Stop the cap / T'es un mytho\n" +
+    "/mgd \u2014 MTL Groups Destroyed\n" +
+    "/fu \u2014 ...\n" +
+    "/gay \u2014 You're a faggot\n\n" +
+    "<b>\u{1F525} OWNER MENTION</b>\n" +
+    "/papa /pere /boss /patron /chef /owner /roi /king\n\n" +
+    "<b>\u2753 HELP</b>\n" +
+    "/help \u2014 Show this list\n\n" +
+    "<i>Target: reply to a message, tag @username, or bot uses the last speaker.</i>";
+
+  if (ctx.chat.type !== "private") {
+    try {
+      await ctx.telegram.sendMessage(ctx.from.id, helpText, { parse_mode: "HTML" });
+      return ctx.reply("Check your DMs! \u{1F4EC}");
+    } catch {
+      const me = await ctx.telegram.getMe();
+      return ctx.reply(`Start a chat with me first: @${me.username} then try /help again \u{1F4AC}`);
     }
+  } else {
+    return ctx.reply(helpText, { parse_mode: "HTML" });
   }
+}
 
+// ─── START (private chat) ──────────────────────────────────────
+bot.command("start", async (ctx) => {
+  if (ctx.chat.type === "private") {
+    return ctx.reply(
+      "\u{1F916} <b>CASPER MOD BOT</b>\n\n" +
+      "Add me to a group and make me admin to start moderating.\n\n" +
+      "Use /help to see all commands.",
+      { parse_mode: "HTML" }
+    );
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  REGISTER ALL COMMAND HANDLERS
+// ═══════════════════════════════════════════════════════════════
+
+// Mute commands (10)
+for (const cmd of Object.keys(MUTE_REPLIES)) {
+  bot.command(cmd, muteHandler);
+}
+
+// Unmute commands (2)
+for (const cmd of Object.keys(UNMUTE_REPLIES)) {
+  bot.command(cmd, unmuteHandler);
+}
+
+// Kick commands (3)
+for (const cmd of Object.keys(KICK_REPLIES)) {
+  bot.command(cmd, kickHandler);
+}
+
+// Ban commands (3)
+for (const cmd of Object.keys(BAN_REPLIES)) {
+  bot.command(cmd, banHandler);
+}
+
+// Promote commands (2)
+for (const cmd of Object.keys(PROMOTE_REPLIES)) {
+  bot.command(cmd, promoteHandler);
+}
+
+// Demote commands (2)
+for (const cmd of Object.keys(DEMOTE_REPLIES)) {
+  bot.command(cmd, demoteHandler);
+}
+
+// Owner mention commands (8)
+for (const cmd of OWNER_COMMANDS) {
+  bot.command(cmd, ownerHandler);
+}
+
+// Fun commands (6)
+for (const cmd of Object.keys(FUN_REPLIES)) {
+  bot.command(cmd, funHandler);
+}
+bot.command("cap", funHandler);
+
+// Help (1)
+bot.command("help", helpHandler);
+
+// ═══════════════════════════════════════════════════════════════
+//  VERCEL SERVERLESS HANDLER
+// ═══════════════════════════════════════════════════════════════
+export default async function handler(req, res) {
   try {
     if (req.method === "POST") {
       await bot.handleUpdate(req.body);
@@ -747,6 +719,5 @@ module.exports = async (req, res) => {
     console.error("Error handling update:", error);
   }
 
-  // Always return 200 to Telegram (prevents retry loops)
-  res.status(200).json({ ok: true });
-};
+  res.status(200).send("ok");
+}
