@@ -41,8 +41,15 @@ Build a Telegram moderation bot with 30+ commands (mute, unmute, kick, ban, admi
 - DEPLOY.md with step-by-step Railway instructions
 - No hardcoded values — all config via environment variables
 
+## Vercel Conversion (2026-03-16)
+- Complete Python→Node.js port: Telegraf + Vercel serverless
+- Webhook-based (no polling) — Vercel compatible
+- All 38 commands preserved with identical behavior
+- MongoDB for stateful tracking (last speaker, user cache, language detection)
+- Zero-dependency language detection (regex-based, 13 languages)
+- Files: /app/vercel-bot/api/bot.js, api/set-webhook.js, package.json, vercel.json
+
 ## Prioritized Backlog
-- P0: Complete (all commands + web status + Railway deploy)
-- P1: Webhook mode for production (instead of polling)
-- P2: Admin-only command restriction option
+- P0: Complete (all commands + Railway + Vercel deploy)
+- P1: Admin-only command restriction option
 - P2: Web dashboard with logs/history
